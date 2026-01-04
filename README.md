@@ -1,58 +1,175 @@
-# DailyBasisRoute
+# 🎯 DailyBasisRoute v2.0
 
-Sistema gamificado de rotina diária com pontuação e tracking de progresso.
-
-## Sobre
-
-DailyBasisRoute é um aplicativo web que transforma minha rotina diária em um sistema de pontos gamificado, me ajudando a manter consistência nos hábitos e objetivos.
+Sistema completo de gerenciamento de rotina gamificado com analytics, notas diárias e integração com IA.
 
 ## ✨ Funcionalidades
 
-- Sistema de pontos (até 115pts/dia)
-- Progresso semanal com histórico
-- Contador de sequência (streak) 
-- Salvamento automático local
-- Design responsivo (mobile-first)
-- Interface moderna e intuitiva
+### 🔐 Sistema de Autenticação
+- Login e cadastro de usuários
+- Sessões seguras com bcrypt
+- Dados isolados por usuário
+
+### 📊 Dashboard Principal
+- Checklist de tarefas diárias com 3 categorias:
+  - **Pilares Fixos** (40pts): Devocional, rotina de sono
+  - **Cardápio de Estudos** (40pts): DS/Python, inglês, SQL, atividade física, leitura
+  - **Bônus Extras** (20pts): Obsidian, treino eficiente, pedal extra
+- **Tarefas do Dia:** Adicione tarefas pontuais (cortar grama, lavar carro, etc)
+- Sistema de pontos (100pts/dia)
+- Contador de streak (sequência de dias 60+pts)
+- Progresso semanal em tempo real
+- **Campo de notas diárias** com auto-save
+
+### 📈 Analytics
+- Gráfico semanal (últimos 7 dias)
+- Gráfico mensal (últimos 30 dias)
+- Estatísticas:
+  - Média semanal/mensal
+  - Taxa de sucesso (60+ pontos)
+  - Melhor dia
+
+### 📜 Histórico
+- Últimos 30 dias com pontuação
+- Notas de cada dia
+- Badges de desempenho
+
+### 🤖 Integração com IA
+- Botão "Exportar Dados" copia JSON completo
+- Claude pode trazer análises personalizadas
+- Dados incluem: tarefas, pontos, notas, datas
 
 ## 🛠️ Tecnologias
 
-- **HTML5** - Estrutura
-- **CSS3** - Estilização e animações
-- **JavaScript (Vanilla)** - Lógica e interatividade
-- **LocalStorage API** - Persistência de dados
+- **Backend:** Flask (Python)
+- **Frontend:** HTML5, CSS3, JavaScript (Vanilla)
+- **Banco de Dados:** SQLite
+- **Gráficos:** Chart.js
+- **Autenticação:** Werkzeug Security (bcrypt)
 
-## 📦 Deploy
+## 🚀 Como Usar
 
-Projeto hospedado no Vercel: [https://dailybasisroute.vercel.app](https://dailybasisroute.vercel.app)
+### 1. Instalação
 
-## Categorias de Tarefas
+```bash
+# Clone ou baixe o projeto
+cd dailybasisroute
 
-### Pilares Fixos (50pts)
-- Devocionais manhã e noite
-- Academia
-- Rotina de sono
+# Instale as dependências
+pip install flask --break-system-packages
 
-### Cardápio de Estudos (50pts)
-- Data Science / Python
-- Inglês
-- SQL
-- Análise de projetos
-- Leitura técnica
+# Rode o servidor
+python3 app.py
+```
 
-### 🌟 Bônus (15pts)
-- Documentação no Obsidian
-- Treino eficiente
-- Aprendizado extra
+### 2. Acesso
 
-## Meta Diária
+Abra o navegador em: `http://localhost:5000`
 
-**80+ pontos** = Dia bem-sucedido e mantém a sequência!
+### 3. Primeiro Uso
+
+1. Clique em **"Cadastro"**
+2. Preencha nome, email e senha
+3. Tarefas padrão serão criadas automaticamente
+4. Comece a marcar suas atividades!
+
+### 4. Uso Diário
+
+1. Acesse o **Dashboard**
+2. Marque tarefas conforme completa
+3. Escreva uma nota sobre o dia
+4. Acompanhe sua pontuação e streak
+
+### 5. Análise com IA
+
+1. Clique em **"Exportar Dados"**
+2. Cole no Claude (ou outro assistente)
+3. Peça análises tipo:
+   - "Analise meus padrões de produtividade"
+   - "Quais dias tive melhor desempenho?"
+   - "Identifique correlações entre tarefas"
+
+## 📊 Sistema de Pontos
+
+**Sistema realista e sustentável:**
+
+- **Meta diária:** 60+ pontos = mantém streak ✨
+- **Máximo possível:** 100 pontos/dia
+- **Categorias:**
+  - **Pilares (40pts):** Base essencial - devocional, sono, acordar
+  - **Cardápio (40pts):** Estudos e desenvolvimento - escolha suas prioridades
+  - **Bônus (20pts):** Extras e eficiência
+
+### **Breakdown detalhado:**
+
+**PILARES FIXOS (40pts):**
+- 🙏 Devocional Diário: 20pts (manhã ou noite)
+- 😴 Dormiu antes 23h: 10pts
+- ⏰ Acordou cedo sem voltar: 10pts
+
+**CARDÁPIO FLEXÍVEL (40pts):**
+- 💪 Atividade Física: 15pts (qualquer tipo!)
+- 📊 Estudo DS/Python: 15pts
+- 🗣️ Inglês: 10pts
+- 🗄️ SQL: 10pts
+- 📖 Leitura: 10pts
+
+**BÔNUS EXTRAS (20pts):**
+- 📝 Obsidian: 5pts
+- ⚡ Treino Focado: 5pts
+- 🚴 Pedal Extra: 10pts
+
+**Filosofia:** O sistema prioriza consistência sobre perfeição. A maioria dos dias deve atingir 60+ pontos naturalmente, sem exaustão.
+
+## 🎯 Filosofia
+
+Baseado em conceitos japoneses:
+
+- **Kaizen:** Melhoria contínua (1% melhor por dia)
+- **Ikigai:** Propósito diário
+- **Wabi-sabi:** Aceitar imperfeições
+- **Kintsugi:** Força nas quedas e recuperações
+
+## 📁 Estrutura do Projeto
+
+```
+dailybasisroute/
+├── app.py                  # Backend Flask
+├── dailybasisroute.db      # Banco SQLite (criado automaticamente)
+├── templates/
+│   ├── login.html          # Página de login/cadastro
+│   ├── dashboard.html      # Dashboard principal
+│   ├── analytics.html      # Gráficos e estatísticas
+│   └── historico.html      # Histórico de 30 dias
+└── static/
+    └── css/
+        └── style.css       # Estilos completos
+```
+
+## 🔧 Banco de Dados
+
+**Tabelas:**
+- `users` - Usuários do sistema
+- `tasks` - Definições de tarefas
+- `daily_logs` - Registros diários de conclusão
+- `notes` - Notas diárias
+- `streaks` - Controle de sequências
+
+## 💡 Ideias Futuras
+
+- [ ] Timeline de aprendizado visual
+- [ ] Seção Ikigai Lab
+- [ ] Correlações automáticas (ML)
+- [ ] Widget mobile
+- [ ] Exportar PDF mensal
+- [ ] Integração Google Calendar
+- [ ] Modo multiplayer/competição
 
 ## 📝 Licença
 
-MIT License - sinta-se livre para usar e modificar!
+MIT - Use à vontade!
 
 ---
 
-Feito com 💜 por Matheus
+**Desenvolvido com 💜 por Matheus Folle**
+
+*"Sua rotina quantificada, sua evolução visualizada"*

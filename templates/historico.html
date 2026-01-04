@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico - DailyBasisRoute</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>🎯 DailyBasisRoute</h1>
+            <div class="nav-links">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/analytics">Analytics</a>
+                <a href="/historico" class="active">Histórico</a>
+                <a href="/logout">Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2>📜 Histórico (Últimos 30 dias)</h2>
+        
+        <div class="history-list">
+            {% if history %}
+                {% for day in history %}
+                <div class="history-item {% if day.total_points >= 60 %}success{% elif day.total_points >= 40 %}warning{% else %}low{% endif %}">
+                    <div class="history-header">
+                        <div class="history-date">
+                            📅 {{ day.date }}
+                        </div>
+                        <div class="history-points">
+                            {{ day.total_points }} pts
+                            {% if day.total_points >= 60 %}
+                                <span class="badge success">✨ Excelente!</span>
+                            {% elif day.total_points >= 40 %}
+                                <span class="badge warning">👍 Bom</span>
+                            {% else %}
+                                <span class="badge low">💪 Pode melhorar</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="history-details">
+                        <p><strong>Tarefas completadas:</strong> {{ day.completed_tasks }}</p>
+                        {% if day.note %}
+                        <div class="history-note">
+                            <strong>📝 Nota do dia:</strong>
+                            <p>{{ day.note }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <p>😊 Nenhum registro ainda. Comece marcando suas tarefas hoje!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
