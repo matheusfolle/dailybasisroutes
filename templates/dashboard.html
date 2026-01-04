@@ -149,9 +149,31 @@
             <button class="btn-save" onclick="saveNote()">💾 Salvar Nota</button>
         </div>
 
+        <!-- Mood Tracker -->
+        <div class="tasks-container mood-tracker">
+            <div class="section-title">
+                <span><span class="emoji" id="moodEmoji">😐</span> Como você está se sentindo hoje?</span>
+            </div>
+            <div class="mood-slider-container">
+                <input type="range" id="moodSlider" min="0" max="100" value="{{ mood }}" class="mood-slider">
+                <div class="mood-labels">
+                    <span>😢 0</span>
+                    <span id="moodValue" class="mood-value">{{ mood }}</span>
+                    <span>100 😊</span>
+                </div>
+            </div>
+            <div class="mood-description" id="moodDescription"></div>
+        </div>
+
         <!-- Exportar Dados -->
         <div class="export-section">
-            <button class="btn-export" onclick="exportData()">📊 Exportar Dados para Análise com IA</button>
+            <h3>📊 Exportar para Análise</h3>
+            <div class="export-buttons">
+                <button class="btn-export" onclick="exportData('week')">📅 Última Semana</button>
+                <button class="btn-export" onclick="exportData('biweekly')">📆 Últimas 2 Semanas</button>
+                <button class="btn-export" onclick="exportData('month')">📊 Último Mês</button>
+                <button class="btn-export" onclick="exportData('all')">🗂️ Tudo</button>
+            </div>
         </div>
     </div>
 
@@ -300,16 +322,71 @@
         }
 
         // Exportar dados
-        async function exportData() {
-            const response = await fetch('/api/export');
+        async function exportData(period = 'all') {
+            const response = await fetch(`/api/export?period=${period}`);
             const data = await response.json();
             
             const jsonStr = JSON.stringify(data, null, 2);
+            await navigator.clipboard.writeText(jsonStr);
             
-            // Copiar para clipboard
-            navigator.clipboard.writeText(jsonStr);
+            const periodNames = {
+                'week': 'última semana',
+                'biweekly': 'últimas 2 semanas', 
+                'month': 'último mês',
+                'all': 'todos os dados'
+            };
             
-            alert('📋 Dados copiados! Cole no Claude para análise.');
+            alert(`✅ Dados da ${periodNames[period]} copiados!\n\nCole no Claude para análise.`);
+        }
+        
+        // Mood Tracker
+        const moodSlider = document.getElementById('moodSlider');
+        const moodValue = document.getElementById('moodValue');
+        const moodEmoji = document.getElementById('moodEmoji');
+        const moodDescription = document.getElementById('moodDescription');
+        
+        function updateMoodDisplay(value) {
+            moodValue.textContent = value;
+            
+            if (value <= 20) {
+                moodEmoji.textContent = '😢';
+                moodDescription.textContent = 'Dia difícil... Lembre-se que dias ruins passam!';
+                moodDescription.style.color = '#f5576c';
+            } else if (value <= 40) {
+                moodEmoji.textContent = '😕';
+                moodDescription.textContent = 'Não está tão bom, mas amanhã pode ser melhor!';
+                moodDescription.style.color = '#f093fb';
+            } else if (value <= 60) {
+                moodEmoji.textContent = '😐';
+                moodDescription.textContent = 'Dia neutro, normal.';
+                moodDescription.style.color = '#999';
+            } else if (value <= 80) {
+                moodEmoji.textContent = '🙂';
+                moodDescription.textContent = 'Dia bom! Continue assim!';
+                moodDescription.style.color = '#667eea';
+            } else {
+                moodEmoji.textContent = '😊';
+                moodDescription.textContent = 'Dia excelente! Aproveite esse momento!';
+                moodDescription.style.color = '#00d084';
+            }
+        }
+        
+        if (moodSlider) {
+            moodSlider.addEventListener('input', (e) => {
+                updateMoodDisplay(e.target.value);
+            });
+            
+            moodSlider.addEventListener('change', async (e) => {
+                const moodScore = parseInt(e.target.value);
+                await fetch('/api/save_mood', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({mood_score: moodScore, date: today})
+                });
+            });
+            
+            // Inicializar display do mood
+            updateMoodDisplay(moodSlider.value);
         }
 
         // Auto-save da nota a cada 30 segundos

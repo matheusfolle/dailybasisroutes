@@ -1,30 +1,30 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import json
 import os
 
 app = Flask(__name__)
-app.secret_key = 'dailybasisroute-secret-key-2025'
+app.secret_key = os.environ.get('SECRET_KEY', 'dailybasisroute-secret-key-2025')
 
 # Configuração do banco de dados
-DATABASE = 'dailybasisroute.db'
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:31528899japan@db.flzqqwelasfzipzahzqw.supabase.co:5432/postgres')
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 def init_db():
     """Inicializa o banco de dados com as tabelas necessárias"""
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Tabela de usuários
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -35,7 +35,7 @@ def init_db():
     # Tabela de tarefas (definições)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             category TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -49,11 +49,11 @@ def init_db():
     # Tabela de registros diários
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date DATE NOT NULL,
             task_id INTEGER NOT NULL,
-            completed BOOLEAN DEFAULT 0,
+            completed BOOLEAN DEFAULT FALSE,
             FOREIGN KEY (user_id) REFERENCES users (id),
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             UNIQUE(user_id, date, task_id)
@@ -63,7 +63,7 @@ def init_db():
     # Tabela de notas diárias
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date DATE NOT NULL,
             content TEXT,
@@ -75,7 +75,7 @@ def init_db():
     # Tabela de streaks
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS streaks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER UNIQUE NOT NULL,
             current_streak INTEGER DEFAULT 0,
             last_completion_date DATE,
@@ -86,13 +86,25 @@ def init_db():
     # Tabela de tarefas customizadas do dia
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS custom_tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date DATE NOT NULL,
             name TEXT NOT NULL,
             points INTEGER NOT NULL,
-            completed BOOLEAN DEFAULT 1,
+            completed BOOLEAN DEFAULT TRUE,
             FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Tabela de humor diário
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS daily_mood (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            mood_score INTEGER NOT NULL CHECK (mood_score >= 0 AND mood_score <= 100),
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, date)
         )
     ''')
     
@@ -102,7 +114,7 @@ def init_db():
 def setup_default_tasks(user_id):
     """Cria as tarefas padrão para um novo usuário"""
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor()  # Cursor normal
     
     default_tasks = {
         'pilares': [
@@ -128,11 +140,11 @@ def setup_default_tasks(user_id):
         for task in tasks_list:
             cursor.execute('''
                 INSERT INTO tasks (user_id, category, name, emoji, points, details)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', (user_id, category, task['name'], task['emoji'], task['points'], task['details']))
     
     # Criar registro de streak
-    cursor.execute('INSERT INTO streaks (user_id) VALUES (?)', (user_id,))
+    cursor.execute('INSERT INTO streaks (user_id) VALUES (%s)', (user_id,))
     
     conn.commit()
     conn.close()
@@ -150,8 +162,9 @@ def login():
     password = request.form.get('password')
     
     conn = get_db()
-    cursor = conn.cursor()
-    user = cursor.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
+    user = cursor.fetchone()
     conn.close()
     
     if user and check_password_hash(user['password_hash'], password):
@@ -168,15 +181,15 @@ def cadastro():
     name = request.form.get('name')
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor()  # Cursor normal, não RealDictCursor
     
     try:
         cursor.execute('''
             INSERT INTO users (email, password_hash, name)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s) RETURNING id
         ''', (email, generate_password_hash(password), name))
+        user_id = cursor.fetchone()[0]
         conn.commit()
-        user_id = cursor.lastrowid
         
         # Setup tarefas padrão
         setup_default_tasks(user_id)
@@ -185,7 +198,7 @@ def cadastro():
         session['user_name'] = name
         conn.close()
         return redirect(url_for('dashboard'))
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         conn.close()
         return redirect(url_for('index', error='exists'))
 
@@ -203,35 +216,45 @@ def dashboard():
     today = datetime.now().date().isoformat()
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Buscar tarefas do usuário
-    tasks = cursor.execute('''
+    cursor.execute('''
         SELECT t.*, 
-               COALESCE(dl.completed, 0) as completed
+               COALESCE(dl.completed, FALSE) as completed
         FROM tasks t
         LEFT JOIN daily_logs dl ON t.id = dl.task_id 
-            AND dl.user_id = ? AND dl.date = ?
-        WHERE t.user_id = ?
+            AND dl.user_id = %s AND dl.date = %s
+        WHERE t.user_id = %s
         ORDER BY t.category, t.id
-    ''', (user_id, today, user_id)).fetchall()
+    ''', (user_id, today, user_id))
+    tasks = cursor.fetchall()
     
     # Buscar tarefas customizadas do dia
-    custom_tasks = cursor.execute('''
+    cursor.execute('''
         SELECT * FROM custom_tasks 
-        WHERE user_id = ? AND date = ?
+        WHERE user_id = %s AND date = %s
         ORDER BY id
-    ''', (user_id, today)).fetchall()
+    ''', (user_id, today))
+    custom_tasks = cursor.fetchall()
     
     # Buscar nota do dia
-    note = cursor.execute('''
-        SELECT content FROM notes WHERE user_id = ? AND date = ?
-    ''', (user_id, today)).fetchone()
+    cursor.execute('''
+        SELECT content FROM notes WHERE user_id = %s AND date = %s
+    ''', (user_id, today))
+    note = cursor.fetchone()
     
     # Buscar streak
-    streak_data = cursor.execute('''
-        SELECT current_streak FROM streaks WHERE user_id = ?
-    ''', (user_id,)).fetchone()
+    cursor.execute('''
+        SELECT current_streak FROM streaks WHERE user_id = %s
+    ''', (user_id,))
+    streak_data = cursor.fetchone()
+    
+    # Buscar mood do dia
+    cursor.execute('''
+        SELECT mood_score FROM daily_mood WHERE user_id = %s AND date = %s
+    ''', (user_id, today))
+    mood_data = cursor.fetchone()
     
     conn.close()
     
@@ -245,6 +268,7 @@ def dashboard():
                          custom_tasks=[dict(ct) for ct in custom_tasks],
                          note=note['content'] if note else '',
                          streak=streak_data['current_streak'] if streak_data else 0,
+                         mood=mood_data['mood_score'] if mood_data else 50,
                          today=today)
 
 @app.route('/api/toggle_task', methods=['POST'])
@@ -257,45 +281,48 @@ def toggle_task():
     date = request.json.get('date', datetime.now().date().isoformat())
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Verificar se já existe um registro
-    existing = cursor.execute('''
+    cursor.execute('''
         SELECT completed FROM daily_logs 
-        WHERE user_id = ? AND task_id = ? AND date = ?
-    ''', (user_id, task_id, date)).fetchone()
+        WHERE user_id = %s AND task_id = %s AND date = %s
+    ''', (user_id, task_id, date))
+    existing = cursor.fetchone()
     
     if existing:
         # Toggle
-        new_status = 0 if existing['completed'] else 1
+        new_status = not existing['completed']
         cursor.execute('''
-            UPDATE daily_logs SET completed = ? 
-            WHERE user_id = ? AND task_id = ? AND date = ?
+            UPDATE daily_logs SET completed = %s 
+            WHERE user_id = %s AND task_id = %s AND date = %s
         ''', (new_status, user_id, task_id, date))
     else:
         # Criar novo
         cursor.execute('''
             INSERT INTO daily_logs (user_id, task_id, date, completed)
-            VALUES (?, ?, ?, 1)
+            VALUES (%s, %s, %s, TRUE)
         ''', (user_id, task_id, date))
     
     conn.commit()
     
     # Calcular pontos totais do dia (tarefas normais + customizadas)
-    points = cursor.execute('''
+    cursor.execute('''
         SELECT SUM(t.points) as total
         FROM daily_logs dl
         JOIN tasks t ON dl.task_id = t.id
-        WHERE dl.user_id = ? AND dl.date = ? AND dl.completed = 1
-    ''', (user_id, date)).fetchone()
+        WHERE dl.user_id = %s AND dl.date = %s AND dl.completed = TRUE
+    ''', (user_id, date))
+    points = cursor.fetchone()
     
-    custom_points = cursor.execute('''
+    cursor.execute('''
         SELECT SUM(points) as total
         FROM custom_tasks
-        WHERE user_id = ? AND date = ?
-    ''', (user_id, date)).fetchone()
+        WHERE user_id = %s AND date = %s
+    ''', (user_id, date))
+    custom_points = cursor.fetchone()
     
-    total_points = (points['total'] if points['total'] else 0) + (custom_points['total'] if custom_points['total'] else 0)
+    total_points = (float(points['total']) if points and points['total'] else 0) + (float(custom_points['total']) if custom_points and custom_points['total'] else 0)
     
     # Atualizar streak se necessário
     update_streak(user_id, date, total_points)
@@ -317,9 +344,39 @@ def save_note():
     cursor = conn.cursor()
     
     cursor.execute('''
-        INSERT OR REPLACE INTO notes (user_id, date, content)
-        VALUES (?, ?, ?)
+        INSERT INTO notes (user_id, date, content)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, date) 
+        DO UPDATE SET content = EXCLUDED.content
     ''', (user_id, date, content))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/save_mood', methods=['POST'])
+def save_mood():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
+    mood_score = request.json.get('mood_score')
+    date = request.json.get('date', datetime.now().date().isoformat())
+    
+    # Validar mood_score
+    if mood_score is None or mood_score < 0 or mood_score > 100:
+        return jsonify({'error': 'Invalid mood score'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO daily_mood (user_id, date, mood_score)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, date) 
+        DO UPDATE SET mood_score = EXCLUDED.mood_score
+    ''', (user_id, date, mood_score))
     
     conn.commit()
     conn.close()
@@ -341,11 +398,11 @@ def add_custom_task():
     
     cursor.execute('''
         INSERT INTO custom_tasks (user_id, date, name, points, completed)
-        VALUES (?, ?, ?, ?, 1)
+        VALUES (%s, %s, %s, %s, TRUE) RETURNING id
     ''', (user_id, date, name, points))
     
+    task_id = cursor.fetchone()[0]
     conn.commit()
-    task_id = cursor.lastrowid
     conn.close()
     
     return jsonify({'success': True, 'task_id': task_id})
@@ -359,11 +416,11 @@ def delete_custom_task():
     task_id = request.json.get('task_id')
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     cursor.execute('''
         DELETE FROM custom_tasks 
-        WHERE id = ? AND user_id = ?
+        WHERE id = %s AND user_id = %s
     ''', (task_id, user_id))
     
     conn.commit()
@@ -379,35 +436,47 @@ def get_stats():
     user_id = session['user_id']
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Últimos 7 dias
-    week_data = cursor.execute('''
+    cursor.execute('''
         SELECT dl.date, SUM(t.points) as points
         FROM daily_logs dl
         JOIN tasks t ON dl.task_id = t.id
-        WHERE dl.user_id = ? AND dl.completed = 1
-            AND dl.date >= date('now', '-7 days')
+        WHERE dl.user_id = %s AND dl.completed = TRUE
+            AND dl.date >= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY dl.date
         ORDER BY dl.date
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    week_data = cursor.fetchall()
     
     # Últimos 30 dias
-    month_data = cursor.execute('''
+    cursor.execute('''
         SELECT dl.date, SUM(t.points) as points
         FROM daily_logs dl
         JOIN tasks t ON dl.task_id = t.id
-        WHERE dl.user_id = ? AND dl.completed = 1
-            AND dl.date >= date('now', '-30 days')
+        WHERE dl.user_id = %s AND dl.completed = TRUE
+            AND dl.date >= CURRENT_DATE - INTERVAL '30 days'
         GROUP BY dl.date
         ORDER BY dl.date
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    month_data = cursor.fetchall()
+    
+    # Mood dos últimos 30 dias
+    cursor.execute('''
+        SELECT date, mood_score
+        FROM daily_mood
+        WHERE user_id = %s AND date >= CURRENT_DATE - INTERVAL '30 days'
+        ORDER BY date
+    ''', (user_id,))
+    mood_data = cursor.fetchall()
     
     conn.close()
     
     return jsonify({
-        'week': [{'date': row['date'], 'points': row['points']} for row in week_data],
-        'month': [{'date': row['date'], 'points': row['points']} for row in month_data]
+        'week': [{'date': str(row['date']), 'points': float(row['points']) if row['points'] else 0} for row in week_data],
+        'month': [{'date': str(row['date']), 'points': float(row['points']) if row['points'] else 0} for row in month_data],
+        'mood': [{'date': str(row['date']), 'mood': int(row['mood_score'])} for row in mood_data]
     })
 
 @app.route('/api/export')
@@ -416,69 +485,88 @@ def export_data():
         return jsonify({'error': 'Not authenticated'}), 401
     
     user_id = session['user_id']
+    period = request.args.get('period', 'all')  # all, week, biweekly, month
+    
+    # Definir intervalo de datas
+    if period == 'week':
+        date_filter = "AND dl.date >= CURRENT_DATE - INTERVAL '7 days'"
+    elif period == 'biweekly':
+        date_filter = "AND dl.date >= CURRENT_DATE - INTERVAL '14 days'"
+    elif period == 'month':
+        date_filter = "AND dl.date >= CURRENT_DATE - INTERVAL '30 days'"
+    else:
+        date_filter = ""
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Buscar todos os dados
-    logs = cursor.execute('''
-        SELECT dl.date, t.name, t.category, t.points, dl.completed, n.content as note
+    # Buscar dados com filtro de período
+    cursor.execute(f'''
+        SELECT dl.date, t.name, t.category, t.points, dl.completed, n.content as note, m.mood_score
         FROM daily_logs dl
         JOIN tasks t ON dl.task_id = t.id
         LEFT JOIN notes n ON dl.user_id = n.user_id AND dl.date = n.date
-        WHERE dl.user_id = ?
+        LEFT JOIN daily_mood m ON dl.user_id = m.user_id AND dl.date = m.date
+        WHERE dl.user_id = %s {date_filter}
         ORDER BY dl.date DESC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    logs = cursor.fetchall()
     
     # Buscar tarefas customizadas
-    custom_logs = cursor.execute('''
+    cursor.execute(f'''
         SELECT date, name, points
         FROM custom_tasks
-        WHERE user_id = ?
+        WHERE user_id = %s {date_filter.replace('dl.date', 'date')}
         ORDER BY date DESC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    custom_logs = cursor.fetchall()
     
     conn.close()
     
     # Organizar dados por dia
     data_by_date = {}
     for log in logs:
-        date = log['date']
+        date = str(log['date'])
         if date not in data_by_date:
             data_by_date[date] = {
                 'date': date,
                 'tasks': [],
                 'total_points': 0,
-                'note': log['note']
+                'note': log['note'],
+                'mood': int(log['mood_score']) if log['mood_score'] is not None else None
             }
         
         if log['completed']:
             data_by_date[date]['tasks'].append({
                 'name': log['name'],
                 'category': log['category'],
-                'points': log['points']
+                'points': float(log['points'])
             })
-            data_by_date[date]['total_points'] += log['points']
+            data_by_date[date]['total_points'] += float(log['points'])
     
     # Adicionar tarefas customizadas
     for custom in custom_logs:
-        date = custom['date']
+        date = str(custom['date'])
         if date not in data_by_date:
             data_by_date[date] = {
                 'date': date,
                 'tasks': [],
                 'total_points': 0,
-                'note': None
+                'note': None,
+                'mood': None
             }
         
         data_by_date[date]['tasks'].append({
             'name': custom['name'],
             'category': 'custom',
-            'points': custom['points']
+            'points': float(custom['points'])
         })
-        data_by_date[date]['total_points'] += custom['points']
+        data_by_date[date]['total_points'] += float(custom['points'])
     
-    return jsonify(list(data_by_date.values()))
+    return jsonify({
+        'period': period,
+        'data': list(data_by_date.values())
+    })
 
 @app.route('/analytics')
 def analytics():
@@ -494,22 +582,23 @@ def historico():
     user_id = session['user_id']
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     # Últimos 30 dias com pontos
-    history = cursor.execute('''
+    cursor.execute('''
         SELECT 
             dl.date,
             SUM(t.points) as total_points,
-            COUNT(DISTINCT CASE WHEN dl.completed = 1 THEN t.id END) as completed_tasks,
+            COUNT(DISTINCT CASE WHEN dl.completed = TRUE THEN t.id END) as completed_tasks,
             n.content as note
         FROM daily_logs dl
         JOIN tasks t ON dl.task_id = t.id
         LEFT JOIN notes n ON dl.user_id = n.user_id AND dl.date = n.date
-        WHERE dl.user_id = ? AND dl.date >= date('now', '-30 days')
-        GROUP BY dl.date
+        WHERE dl.user_id = %s AND dl.date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY dl.date, n.content
         ORDER BY dl.date DESC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    history = cursor.fetchall()
     
     conn.close()
     
@@ -518,12 +607,14 @@ def historico():
 def update_streak(user_id, current_date, points):
     """Atualiza a sequência do usuário"""
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    streak = cursor.execute('SELECT * FROM streaks WHERE user_id = ?', (user_id,)).fetchone()
+    streak = cursor.execute('SELECT * FROM streaks WHERE user_id = %s', (user_id,))
+
+    streak = cursor.fetchone()
     
     if not streak:
-        cursor.execute('INSERT INTO streaks (user_id) VALUES (?)', (user_id,))
+        cursor.execute('INSERT INTO streaks (user_id) VALUES (%s)', (user_id,))
         conn.commit()
         conn.close()
         return
@@ -552,14 +643,18 @@ def update_streak(user_id, current_date, points):
         
         cursor.execute('''
             UPDATE streaks 
-            SET current_streak = ?, last_completion_date = ?
-            WHERE user_id = ?
+            SET current_streak = %s, last_completion_date = %s
+            WHERE user_id = %s
         ''', (current_streak, current_date, user_id))
     
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
-    if not os.path.exists(DATABASE):
+    # Inicializar banco se necessário
+    try:
         init_db()
+    except Exception as e:
+        print(f"Banco já inicializado ou erro: {e}")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)

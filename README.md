@@ -35,7 +35,7 @@ Sistema completo de gerenciamento de rotina gamificado com analytics, notas diá
 
 ### 🤖 Integração com IA
 - Botão "Exportar Dados" copia JSON completo
-- Claude pode trazer análises personalizadas
+- Cole no Claude para análises personalizadas
 - Dados incluem: tarefas, pontos, notas, datas
 
 ## 🛠️ Tecnologias
@@ -52,7 +52,7 @@ Sistema completo de gerenciamento de rotina gamificado com analytics, notas diá
 
 ```bash
 # Clone ou baixe o projeto
-cd dailybasisroute
+cd dailybasisroute_v2
 
 # Instale as dependências
 pip install flask --break-system-packages
@@ -102,7 +102,7 @@ Abra o navegador em: `http://localhost:5000`
 ### **Breakdown detalhado:**
 
 **PILARES FIXOS (40pts):**
-- 🙏 Devocional Diário: 20pts (manhã ou noite)
+- 🙏 Devocional Diário: 20pts (manhã OU noite)
 - 😴 Dormiu antes 23h: 10pts
 - ⏰ Acordou cedo sem voltar: 10pts
 
@@ -132,7 +132,7 @@ Baseado em conceitos japoneses:
 ## 📁 Estrutura do Projeto
 
 ```
-dailybasisroute/
+dailybasisroute_v2/
 ├── app.py                  # Backend Flask
 ├── dailybasisroute.db      # Banco SQLite (criado automaticamente)
 ├── templates/
@@ -154,6 +154,24 @@ dailybasisroute/
 - `notes` - Notas diárias
 - `streaks` - Controle de sequências
 
+## 📱 Deploy (Opcional)
+
+### Vercel/Railway
+
+1. Substitua SQLite por PostgreSQL
+2. Configure variáveis de ambiente
+3. Deploy normal
+
+### Render/Fly.io
+
+1. Adicione `requirements.txt`:
+```
+Flask==3.0.0
+```
+
+2. Configure Procfile/Dockerfile
+3. Deploy
+
 ## 💡 Ideias Futuras
 
 - [ ] Timeline de aprendizado visual
@@ -170,6 +188,6 @@ MIT - Use à vontade!
 
 ---
 
-**Desenvolvido com 💜 por Matheus Folle**
+**Desenvolvido com 💜 por Matheus (Folle)**
 
 *"Sua rotina quantificada, sua evolução visualizada"*
