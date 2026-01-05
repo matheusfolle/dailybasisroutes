@@ -1,4 +1,4 @@
-# 🎯 DailyBasisRoute v2.0
+# 🎯 DailyBasisRoute v3.0
 
 Sistema completo de gerenciamento de rotina gamificado com analytics, notas diárias e integração com IA.
 
