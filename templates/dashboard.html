@@ -287,6 +287,11 @@
             item.addEventListener('click', async function() {
                 const taskId = this.dataset.taskId;
                 
+                // Toggle visual IMEDIATO (antes da requisição)
+                this.classList.toggle('completed');
+                updateUI();
+                
+                // Salvar no backend (assíncrono)
                 const response = await fetch('/api/toggle_task', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -294,14 +299,17 @@
                 });
                 
                 if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Atualizar streak badge sem reload
+                    const streakElement = document.querySelector('.stat-card:nth-child(2) .stat-number');
+                    if (streakElement && data.streak !== undefined) {
+                        streakElement.textContent = data.streak;
+                    }
+                } else {
+                    // Se deu erro, desfaz o toggle
                     this.classList.toggle('completed');
                     updateUI();
-                    
-                    // Atualizar streak
-                    const data = await response.json();
-                    if (data.total_points >= 60) {
-                        location.reload(); // Reload pra atualizar streak
-                    }
                 }
             });
         });

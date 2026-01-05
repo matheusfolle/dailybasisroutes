@@ -327,9 +327,18 @@ def toggle_task():
     # Atualizar streak se necessário
     update_streak(user_id, date, total_points)
     
+    # Buscar streak atualizado
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute('SELECT current_streak FROM streaks WHERE user_id = %s', (user_id,))
+    streak_data = cursor.fetchone()
+    
     conn.close()
     
-    return jsonify({'success': True, 'total_points': total_points})
+    return jsonify({
+        'success': True, 
+        'total_points': total_points,
+        'streak': streak_data['current_streak'] if streak_data else 0
+    })
 
 @app.route('/api/save_note', methods=['POST'])
 def save_note():
@@ -438,7 +447,7 @@ def get_stats():
     conn = get_db()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Últimos 7 dias
+    # Últimos 7 dias - tarefas normais
     cursor.execute('''
         SELECT dl.date, SUM(t.points) as points
         FROM daily_logs dl
@@ -448,9 +457,19 @@ def get_stats():
         GROUP BY dl.date
         ORDER BY dl.date
     ''', (user_id,))
-    week_data = cursor.fetchall()
+    week_data_tasks = cursor.fetchall()
     
-    # Últimos 30 dias
+    # Últimos 7 dias - tarefas customizadas
+    cursor.execute('''
+        SELECT date, SUM(points) as points
+        FROM custom_tasks
+        WHERE user_id = %s AND date >= CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY date
+        ORDER BY date
+    ''', (user_id,))
+    week_data_custom = cursor.fetchall()
+    
+    # Últimos 30 dias - tarefas normais
     cursor.execute('''
         SELECT dl.date, SUM(t.points) as points
         FROM daily_logs dl
@@ -460,7 +479,17 @@ def get_stats():
         GROUP BY dl.date
         ORDER BY dl.date
     ''', (user_id,))
-    month_data = cursor.fetchall()
+    month_data_tasks = cursor.fetchall()
+    
+    # Últimos 30 dias - tarefas customizadas
+    cursor.execute('''
+        SELECT date, SUM(points) as points
+        FROM custom_tasks
+        WHERE user_id = %s AND date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY date
+        ORDER BY date
+    ''', (user_id,))
+    month_data_custom = cursor.fetchall()
     
     # Mood dos últimos 30 dias
     cursor.execute('''
@@ -473,9 +502,23 @@ def get_stats():
     
     conn.close()
     
+    # Combinar pontos por data
+    def combine_points(tasks_data, custom_data):
+        combined = {}
+        for row in tasks_data:
+            date = str(row['date'])
+            combined[date] = float(row['points']) if row['points'] else 0
+        for row in custom_data:
+            date = str(row['date'])
+            combined[date] = combined.get(date, 0) + (float(row['points']) if row['points'] else 0)
+        return [{'date': date, 'points': points} for date, points in sorted(combined.items())]
+    
+    week_combined = combine_points(week_data_tasks, week_data_custom)
+    month_combined = combine_points(month_data_tasks, month_data_custom)
+    
     return jsonify({
-        'week': [{'date': str(row['date']), 'points': float(row['points']) if row['points'] else 0} for row in week_data],
-        'month': [{'date': str(row['date']), 'points': float(row['points']) if row['points'] else 0} for row in month_data],
+        'week': week_combined,
+        'month': month_combined,
         'mood': [{'date': str(row['date']), 'mood': int(row['mood_score'])} for row in mood_data]
     })
 
@@ -584,7 +627,7 @@ def historico():
     conn = get_db()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Últimos 30 dias com pontos
+    # Últimos 30 dias com pontos das tarefas normais
     cursor.execute('''
         SELECT 
             dl.date,
@@ -598,11 +641,46 @@ def historico():
         GROUP BY dl.date, n.content
         ORDER BY dl.date DESC
     ''', (user_id,))
-    history = cursor.fetchall()
+    history_tasks = cursor.fetchall()
+    
+    # Pontos das tarefas customizadas
+    cursor.execute('''
+        SELECT date, SUM(points) as total_points
+        FROM custom_tasks
+        WHERE user_id = %s AND date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY date
+    ''', (user_id,))
+    history_custom = cursor.fetchall()
     
     conn.close()
     
-    return render_template('historico.html', history=[dict(row) for row in history])
+    # Combinar pontos
+    history_dict = {}
+    for row in history_tasks:
+        date = str(row['date'])
+        history_dict[date] = {
+            'date': date,
+            'total_points': float(row['total_points']) if row['total_points'] else 0,
+            'completed_tasks': row['completed_tasks'],
+            'note': row['note']
+        }
+    
+    for row in history_custom:
+        date = str(row['date'])
+        if date in history_dict:
+            history_dict[date]['total_points'] += float(row['total_points']) if row['total_points'] else 0
+        else:
+            history_dict[date] = {
+                'date': date,
+                'total_points': float(row['total_points']) if row['total_points'] else 0,
+                'completed_tasks': 0,
+                'note': None
+            }
+    
+    # Ordenar por data DESC
+    history = sorted(history_dict.values(), key=lambda x: x['date'], reverse=True)
+    
+    return render_template('historico.html', history=history)
 
 def update_streak(user_id, current_date, points):
     """Atualiza a sequência do usuário"""
