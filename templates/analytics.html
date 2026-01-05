@@ -35,9 +35,54 @@
             <canvas id="monthChart"></canvas>
         </div>
 
+        <!-- MOOD ANALYTICS -->
+        <h2 style="margin-top: 40px;">😊 Análise de Humor</h2>
+
+        <!-- Heatmap de Humor -->
+        <div class="chart-container">
+            <h3>🌡️ Heatmap de Humor (Últimos 30 dias)</h3>
+            <div id="moodHeatmap" class="mood-heatmap"></div>
+        </div>
+
+        <!-- Gráfico de Humor ao Longo do Tempo -->
+        <div class="chart-container">
+            <h3>📈 Evolução do Humor</h3>
+            <canvas id="moodChart"></canvas>
+        </div>
+
+        <!-- Gráfico de Correlação Pontos vs Humor -->
+        <div class="chart-container">
+            <h3>🔗 Correlação: Produtividade vs Humor</h3>
+            <canvas id="correlationChart"></canvas>
+            <p id="correlationText" style="text-align: center; margin-top: 10px; font-weight: 500;"></p>
+        </div>
+
+        <!-- Stats de Humor -->
+        <div class="stats-summary">
+            <h3>😊 Estatísticas de Humor</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="avgMood">--</div>
+                    <div class="stat-label">Humor Médio</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="bestMood">--</div>
+                    <div class="stat-label">Melhor Dia</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="worstMood">--</div>
+                    <div class="stat-label">Pior Dia</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="moodTrend">--</div>
+                    <div class="stat-label">Tendência</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Stats Resumidos -->
         <div class="stats-summary">
-            <h3>📋 Resumo</h3>
+            <h3>📋 Resumo de Produtividade</h3>
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number" id="weekAvg">0</div>
@@ -162,6 +207,199 @@
             document.getElementById('monthAvg').textContent = Math.round(monthAvg);
             document.getElementById('successRate').textContent = Math.round(successRate) + '%';
             document.getElementById('bestDay').textContent = bestDay;
+            
+            // ========== MOOD ANALYTICS ==========
+            
+            if (data.mood && data.mood.length > 0) {
+                // Criar heatmap de humor
+                createMoodHeatmap(data.mood);
+                
+                // Gráfico de evolução do humor
+                createMoodChart(data.mood);
+                
+                // Gráfico de correlação
+                createCorrelationChart(data.month, data.mood);
+                
+                // Estatísticas de humor
+                const moodValues = data.mood.map(m => m.mood);
+                const avgMood = moodValues.reduce((a, b) => a + b, 0) / moodValues.length;
+                const bestMood = Math.max(...moodValues);
+                const worstMood = Math.min(...moodValues);
+                
+                // Calcular tendência (últimos 7 dias vs 7 anteriores)
+                const recent7 = moodValues.slice(-7);
+                const previous7 = moodValues.slice(-14, -7);
+                const recentAvg = recent7.reduce((a, b) => a + b, 0) / recent7.length || 0;
+                const previousAvg = previous7.reduce((a, b) => a + b, 0) / previous7.length || 0;
+                const trend = recentAvg - previousAvg;
+                
+                document.getElementById('avgMood').textContent = Math.round(avgMood);
+                document.getElementById('bestMood').textContent = bestMood;
+                document.getElementById('worstMood').textContent = worstMood;
+                document.getElementById('moodTrend').textContent = trend > 0 ? `📈 +${Math.round(trend)}` : trend < 0 ? `📉 ${Math.round(trend)}` : '➡️ 0';
+            }
+        }
+        
+        function createMoodHeatmap(moodData) {
+            const container = document.getElementById('moodHeatmap');
+            container.innerHTML = '';
+            
+            // Últimos 30 dias
+            const last30 = getLast30Days();
+            
+            last30.forEach(date => {
+                const moodEntry = moodData.find(m => m.date === date);
+                const mood = moodEntry ? moodEntry.mood : null;
+                
+                const cell = document.createElement('div');
+                cell.className = 'heatmap-cell';
+                cell.title = `${formatDate(date)}: ${mood !== null ? mood : 'Sem registro'}`;
+                
+                if (mood === null) {
+                    cell.style.background = '#eee';
+                } else if (mood >= 80) {
+                    cell.style.background = '#00d084';
+                } else if (mood >= 60) {
+                    cell.style.background = '#667eea';
+                } else if (mood >= 40) {
+                    cell.style.background = '#f093fb';
+                } else {
+                    cell.style.background = '#f5576c';
+                }
+                
+                container.appendChild(cell);
+            });
+        }
+        
+        function createMoodChart(moodData) {
+            const last30 = getLast30Days();
+            const moodDates = [];
+            const moodValues = [];
+            
+            last30.forEach(date => {
+                const found = moodData.find(m => m.date === date);
+                moodDates.push(formatDate(date));
+                moodValues.push(found ? found.mood : null);
+            });
+            
+            new Chart(document.getElementById('moodChart'), {
+                type: 'line',
+                data: {
+                    labels: moodDates,
+                    datasets: [{
+                        label: 'Humor',
+                        data: moodValues,
+                        borderColor: '#f093fb',
+                        backgroundColor: 'rgba(240, 147, 251, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        spanGaps: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {display: false}
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createCorrelationChart(pointsData, moodData) {
+            // Combinar pontos e mood por data
+            const combined = [];
+            pointsData.forEach(p => {
+                const moodEntry = moodData.find(m => m.date === p.date);
+                if (moodEntry) {
+                    combined.push({
+                        x: p.points,
+                        y: moodEntry.mood
+                    });
+                }
+            });
+            
+            new Chart(document.getElementById('correlationChart'), {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Pontos vs Humor',
+                        data: combined,
+                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                        borderColor: '#667eea',
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {display: false}
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Pontos'
+                            },
+                            beginAtZero: true,
+                            max: 100
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Humor'
+                            },
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+            
+            // Calcular correlação simples
+            if (combined.length > 1) {
+                const correlation = calculateCorrelation(combined);
+                const corrText = document.getElementById('correlationText');
+                
+                if (correlation > 0.7) {
+                    corrText.textContent = `🔥 Forte correlação positiva (${(correlation * 100).toFixed(0)}%): Mais pontos = Melhor humor!`;
+                    corrText.style.color = '#00d084';
+                } else if (correlation > 0.4) {
+                    corrText.textContent = `✅ Correlação moderada (${(correlation * 100).toFixed(0)}%): Produtividade ajuda no humor.`;
+                    corrText.style.color = '#667eea';
+                } else if (correlation > 0) {
+                    corrText.textContent = `➡️ Correlação fraca (${(correlation * 100).toFixed(0)}%): Há alguma relação.`;
+                    corrText.style.color = '#999';
+                } else {
+                    corrText.textContent = `❌ Sem correlação clara: Humor independe dos pontos.`;
+                    corrText.style.color = '#f5576c';
+                }
+            }
+        }
+        
+        function calculateCorrelation(data) {
+            const n = data.length;
+            const sumX = data.reduce((sum, p) => sum + p.x, 0);
+            const sumY = data.reduce((sum, p) => sum + p.y, 0);
+            const sumXY = data.reduce((sum, p) => sum + p.x * p.y, 0);
+            const sumX2 = data.reduce((sum, p) => sum + p.x * p.x, 0);
+            const sumY2 = data.reduce((sum, p) => sum + p.y * p.y, 0);
+            
+            const numerator = (n * sumXY) - (sumX * sumY);
+            const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
+            
+            return denominator === 0 ? 0 : numerator / denominator;
         }
         
         function getLast7Days() {

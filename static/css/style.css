@@ -636,6 +636,29 @@ body {
     color: #333;
 }
 
+/* Mood Heatmap */
+.mood-heatmap {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+    gap: 5px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+    min-height: 30px;
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+}
+
 .stats-summary {
     background: white;
     border-radius: 20px;
